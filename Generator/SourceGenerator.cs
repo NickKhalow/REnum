@@ -6,7 +6,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 
-namespace REnum.Generators
+namespace REnum.Generator
 {
     [Generator]
     public class REnumGenerator : ISourceGenerator
@@ -28,19 +28,14 @@ namespace REnum.Generators
                 if (symbol is not INamedTypeSymbol structSymbol) continue;
 
                 var reEnumAttr = structSymbol.GetAttributes().FirstOrDefault(
-                    attr =>
-                        attr.AttributeClass?.Name == "REnumAttribute"
+                    attr => attr.AttributeClass?.ToDisplayString() == "REnum.REnumAttribute"
                 );
                 if (reEnumAttr == null) continue;
 
-                var variantAttrs = structSymbol.GetAttributes().Where(
-                    attr =>
-                        attr.AttributeClass?.Name == "REnumFieldAttribute"
-                ).ToList();
-
-                var variants = variantAttrs
-                    .Select(attr => attr.ConstructorArguments[0].Value as INamedTypeSymbol)
-                    .Where(t => t != null)
+                var variants = structSymbol.GetAttributes()
+                    .Where(attr => attr.AttributeClass?.ToDisplayString() == "REnum.REnumFieldAttribute")
+                    .Select(attr => attr.ConstructorArguments.FirstOrDefault().Value)
+                    .OfType<INamedTypeSymbol>()
                     .ToList();
 
                 var unionName = structSymbol.Name;
@@ -59,18 +54,55 @@ namespace REnum.Generators
                 sb.AppendLine("    }");
 
                 sb.AppendLine($"    private readonly {kindEnum} _kind;");
+
+
+                var fields = new Dictionary<INamedTypeSymbol, string>();
+
                 foreach (var variant in variants)
-                    sb.AppendLine($"    private readonly {variant.ToDisplayString()}? _{variant.Name.ToLower()};");
+                {
+                    string name = $"_{variant.Name.ToLower()}";
+                    fields[variant] = name;
+                    sb.AppendLine($"    private readonly {variant.ToDisplayString()}? {name};");
+                }
 
                 // constructors
+
+                sb.AppendLine($"private {unionName}(");
+                sb.AppendLine($"{kindEnum} kind");
+                sb.AppendLine(variants.Count > 0 ? "," : "");
+                for (int i = 0; i < variants.Count; i++)
+                {
+                    var variant = variants[i];
+                    var typeName = variant.ToDisplayString();
+                    var fieldName = variant.Name;
+                    var fieldLower = fieldName.ToLower();
+
+                    string comma = i < variants.Count - 1 ? "," : "";
+                    sb.AppendLine($"{typeName}? {fieldLower} = null{comma}");
+                }
+                sb.AppendLine("){");
+                sb.AppendLine("_kind = kind;");
+                for (int i = 0; i < variants.Count; i++)
+                {
+                    var variant = variants[i];
+                    var argName = variant.Name;
+                    var argLower = argName.ToLower();
+                    var fieldName = fields[variant];
+
+                    sb.AppendLine($"{fieldName} = {argLower};");
+                }
+                sb.AppendLine("}");
+
                 foreach (var variant in variants)
                 {
                     var typeName = variant.ToDisplayString();
                     var fieldName = variant.Name;
                     var fieldLower = fieldName.ToLower();
 
+                    string kind = $"{kindEnum}.{fieldName}";
+
                     sb.AppendLine(
-                        $"    public static {unionName} From{fieldName}({typeName} value) => new {unionName} {{ _kind = {kindEnum}.{fieldName}, _{fieldLower} = value }};"
+                        $"    public static {unionName} From{fieldName}({typeName} value) => new {unionName}({kind}, {fieldLower}: value);"
                     );
                 }
 
@@ -81,21 +113,22 @@ namespace REnum.Generators
                     var fieldName = variant.Name;
                     var fieldLower = fieldName.ToLower();
 
-                    sb.AppendLine($"    public bool Is{fieldName}(out {typeName} value) {{");
-                    sb.AppendLine($"        value = _{fieldLower}!.Value;");
+                    sb.AppendLine($"    public bool Is{fieldName}(out {typeName}? value) {{");
+                    sb.AppendLine($"        value = _{fieldLower};");
                     sb.AppendLine($"        return _kind == {kindEnum}.{fieldName};");
                     sb.AppendLine("    }");
                 }
 
                 // Match method
-                sb.AppendLine("    public T Match<T>(");
+                sb.AppendLine("    public T Match<TCtx, T>(");
+                sb.AppendLine($"        TCtx ctx,");
                 for (int i = 0; i < variants.Count; i++)
                 {
                     var variant = variants[i];
                     var typeName = variant.ToDisplayString();
                     var fieldName = variant.Name;
                     var comma = i < variants.Count - 1 ? "," : "";
-                    sb.AppendLine($"        Func<{typeName}, T> on{fieldName}{comma}");
+                    sb.AppendLine($"        Func<TCtx, {typeName}, T> on{fieldName}{comma}");
                 }
                 sb.AppendLine("    )");
                 sb.AppendLine("    {");
@@ -105,7 +138,11 @@ namespace REnum.Generators
                 {
                     var fieldName = variant.Name;
                     var fieldLower = fieldName.ToLower();
-                    sb.AppendLine($"            {kindEnum}.{fieldName} => on{fieldName}(_{fieldLower}!.Value),");
+                    sb.AppendLine(
+                        variant.IsValueType
+                            ? $"            {kindEnum}.{fieldName} => on{fieldName}(ctx, _{fieldLower}!.Value),"
+                            : $"            {kindEnum}.{fieldName} => on{fieldName}(ctx, _{fieldLower}),"
+                    );
                 }
                 sb.AppendLine("            _ => throw new System.InvalidOperationException()");
                 sb.AppendLine("        };");
@@ -113,7 +150,7 @@ namespace REnum.Generators
 
                 sb.AppendLine("}"); // struct
                 sb.AppendLine("}"); // namespace
-                
+
                 context.AddSource($"{unionName}.g.cs", SourceText.From(sb.ToString(), Encoding.UTF8));
             }
         }
