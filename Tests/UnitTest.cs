@@ -70,12 +70,21 @@ public class REnumUnionTest
         };
         var address = Address.FromHouseAddress(houseAddress);
 
+        // matching with the context
         string street = address.Match(
             prefix,
             static (p, house) => $"{p}{house.Street}",
             static (p, apartment) => $"{p}{apartment.Street}"
         );
-        
+
         Assert.That(street, Is.EqualTo($"{prefix}{houseAddress.Street}"));
+
+        // matching without capturing the context
+        string building = address.Match(
+            static house => house.Building,
+            static apartment => apartment.Building
+        );
+        
+        Assert.That(building, Is.EqualTo(houseAddress.Building));
     }
 }

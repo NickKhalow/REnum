@@ -128,7 +128,7 @@ namespace REnum.Generator
                     var typeName = variant.ToDisplayString();
                     var fieldName = variant.Name;
                     var comma = i < variants.Count - 1 ? "," : "";
-                    sb.AppendLine($"        Func<TCtx, {typeName}, T> on{fieldName}{comma}");
+                    sb.AppendLine($"        System.Func<TCtx, {typeName}, T> on{fieldName}{comma}");
                 }
                 sb.AppendLine("    )");
                 sb.AppendLine("    {");
@@ -147,6 +147,85 @@ namespace REnum.Generator
                 sb.AppendLine("            _ => throw new System.InvalidOperationException()");
                 sb.AppendLine("        };");
                 sb.AppendLine("    }");
+
+                // Match method without TCtx
+                sb.AppendLine("    public T Match<T>(");
+                for (int i = 0; i < variants.Count; i++)
+                {
+                    var variant = variants[i];
+                    var typeName = variant.ToDisplayString();
+                    var fieldName = variant.Name;
+                    var comma = i < variants.Count - 1 ? "," : "";
+                    sb.AppendLine($"        System.Func<{typeName}, T> on{fieldName}{comma}");
+                }
+                sb.AppendLine("    )");
+                sb.AppendLine("    {");
+                sb.AppendLine("        return _kind switch");
+                sb.AppendLine("        {");
+                foreach (var variant in variants)
+                {
+                    var fieldName = variant.Name;
+                    var fieldLower = fieldName.ToLower();
+                    sb.AppendLine(
+                        variant.IsValueType
+                            ? $"            {kindEnum}.{fieldName} => on{fieldName}(_{fieldLower}!.Value),"
+                            : $"            {kindEnum}.{fieldName} => on{fieldName}(_{fieldLower}),"
+                    );
+                }
+                sb.AppendLine("            _ => throw new System.InvalidOperationException()");
+                sb.AppendLine("        };");
+                sb.AppendLine("    }");
+
+                // ToString
+                sb.AppendLine("    public override string ToString() => _kind switch");
+                sb.AppendLine("    {");
+                foreach (var variant in variants)
+                {
+                    var fieldName = variant.Name;
+                    var fieldLower = fieldName.ToLower();
+                    sb.AppendLine($"        {kindEnum}.{fieldName} => _{fieldLower}?.ToString() ?? \"null\",");
+                }
+                sb.AppendLine("        _ => \"<invalid>\"");
+                sb.AppendLine("    };");
+
+                // Equals (typed)
+                sb.AppendLine($"    public bool Equals({unionName} other)");
+                sb.AppendLine("    {");
+                sb.AppendLine("        if (_kind != other._kind) return false;");
+                foreach (var variant in variants)
+                {
+                    var fieldName = variant.Name;
+                    var fieldLower = fieldName.ToLower();
+                    var nullable = variant.IsValueType ? "?" : "";
+                    sb.AppendLine($"        if (_kind == {kindEnum}.{fieldName})");
+                    sb.AppendLine(
+                        $"            return EqualityComparer<{variant.ToDisplayString()}{nullable}>.Default.Equals(_{fieldLower}, other._{fieldLower});"
+                    );
+                }
+                sb.AppendLine("        return false;");
+                sb.AppendLine("    }");
+
+                // Equals (object override)
+                sb.AppendLine("    public override bool Equals(object? obj) => obj is " + unionName + " other && Equals(other);");
+
+                // GetHashCode
+                sb.AppendLine("    public override int GetHashCode()");
+                sb.AppendLine("    {");
+                sb.AppendLine("        return _kind switch");
+                sb.AppendLine("        {");
+                foreach (var variant in variants)
+                {
+                    var fieldName = variant.Name;
+                    var fieldLower = fieldName.ToLower();
+                    sb.AppendLine($"            {kindEnum}.{fieldName} => HashCode.Combine((int)_kind, _{fieldLower}),");
+                }
+                sb.AppendLine("            _ => 0");
+                sb.AppendLine("        };");
+                sb.AppendLine("    }");
+
+                // Equality operators
+                sb.AppendLine($"    public static bool operator ==({unionName} left, {unionName} right) => left.Equals(right);");
+                sb.AppendLine($"    public static bool operator !=({unionName} left, {unionName} right) => !(left == right);");
 
                 sb.AppendLine("}"); // struct
                 sb.AppendLine("}"); // namespace
