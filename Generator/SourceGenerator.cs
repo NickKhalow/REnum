@@ -244,7 +244,7 @@ namespace REnum.Generator
                     var nullable = variant.IsValueType ? "?" : "";
                     sb.AppendLine($"        if (_kind == {kindEnum}.{fieldName})");
                     sb.AppendLine(
-                        $"            return EqualityComparer<{variant.ToDisplayString()}{nullable}>.Default.Equals(_{fieldLower}, other._{fieldLower});"
+                        $"            return System.Collections.Generic.EqualityComparer<{variant.ToDisplayString()}{nullable}>.Default.Equals(_{fieldLower}, other._{fieldLower});"
                     );
                 }
                 foreach (var emptyField in emptyFields)
@@ -268,7 +268,7 @@ namespace REnum.Generator
                 {
                     var fieldName = variant.Name;
                     var fieldLower = fieldName.ToLower();
-                    sb.AppendLine($"            {kindEnum}.{fieldName} => HashCode.Combine((int)_kind, _{fieldLower}),");
+                    sb.AppendLine($"            {kindEnum}.{fieldName} => System.HashCode.Combine((int)_kind, _{fieldLower}),");
                 }
                 foreach (var emptyField in emptyFields)
                 {
