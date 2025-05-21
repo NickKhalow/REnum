@@ -260,6 +260,90 @@ namespace REnumSourceGenerator
 
                 logger?.Log("Generated Match without context");
 
+                sb.AppendLine("    public void Match<TCtx>(");
+                sb.AppendLine($"        TCtx ctx,");
+                for (int i = 0; i < variants.Count; i++)
+                {
+                    var variant = variants[i];
+                    var typeName = variant.ToDisplayString();
+                    var fieldName = variant.Name;
+                    var comma = i < variants.Count - 1 || emptyFields.Count > 0 ? "," : "";
+                    sb.AppendLine($"        System.Action<TCtx, {typeName}> on{fieldName}{comma}");
+                }
+                for (int i = 0; i < emptyFields.Count; i++)
+                {
+                    var emptyField = emptyFields[i];
+                    var fieldName = emptyField;
+                    var comma = i < emptyFields.Count - 1 ? "," : "";
+                    sb.AppendLine($"        System.Action<TCtx> on{fieldName}{comma}");
+                }
+                sb.AppendLine("    )");
+                sb.AppendLine("    {");
+                sb.AppendLine("        switch (_kind)");
+                sb.AppendLine("        {");
+                foreach (var variant in variants)
+                {
+                    var fieldName = variant.Name;
+                    var fieldLower = fieldName.ToLower();
+                    sb.AppendLine(
+                        variant.IsValueType
+                            ? $"            case {kindEnum}.{fieldName}: on{fieldName}(ctx, _{fieldLower}!.Value); break;"
+                            : $"            case {kindEnum}.{fieldName}: on{fieldName}(ctx, _{fieldLower}); break;"
+                    );
+                }
+                foreach (var emptyField in emptyFields)
+                {
+                    var fieldName = emptyField;
+                    sb.AppendLine($"            case {kindEnum}.{fieldName}: on{fieldName}(ctx); break;");
+                }
+                sb.AppendLine("            default: throw new System.InvalidOperationException();");
+                sb.AppendLine("        }");
+                sb.AppendLine("    }");
+
+                logger?.Log("Generated void Match with context");
+
+                // Match void without context
+                sb.AppendLine("    public void Match(");
+                for (int i = 0; i < variants.Count; i++)
+                {
+                    var variant = variants[i];
+                    var typeName = variant.ToDisplayString();
+                    var fieldName = variant.Name;
+                    var comma = i < variants.Count - 1 || emptyFields.Count > 0 ? "," : "";
+                    sb.AppendLine($"        System.Action<{typeName}> on{fieldName}{comma}");
+                }
+                for (int i = 0; i < emptyFields.Count; i++)
+                {
+                    var emptyField = emptyFields[i];
+                    var fieldName = emptyField;
+                    var comma = i < emptyFields.Count - 1 ? "," : "";
+                    sb.AppendLine($"        System.Action on{fieldName}{comma}");
+                }
+                sb.AppendLine("    )");
+                sb.AppendLine("    {");
+                sb.AppendLine("        switch (_kind)");
+                sb.AppendLine("        {");
+                foreach (var variant in variants)
+                {
+                    var fieldName = variant.Name;
+                    var fieldLower = fieldName.ToLower();
+                    sb.AppendLine(
+                        variant.IsValueType
+                            ? $"            case {kindEnum}.{fieldName}: on{fieldName}(_{fieldLower}!.Value); break;"
+                            : $"            case {kindEnum}.{fieldName}: on{fieldName}(_{fieldLower}); break;"
+                    );
+                }
+                foreach (var emptyField in emptyFields)
+                {
+                    var fieldName = emptyField;
+                    sb.AppendLine($"            case {kindEnum}.{fieldName}: on{fieldName}(); break;");
+                }
+                sb.AppendLine("            default: throw new System.InvalidOperationException();");
+                sb.AppendLine("        }");
+                sb.AppendLine("    }");
+
+                logger?.Log("Generated void Match without context");
+
                 // ToString
                 sb.AppendLine("    public override string ToString() => _kind switch");
                 sb.AppendLine("    {");

@@ -76,6 +76,13 @@ public class REnumUnionTest
             static (p, house) => $"{p}{house.Street}",
             static (p, apartment) => $"{p}{apartment.Street}"
         );
+        
+        // void match
+        address.Match(
+            prefix,
+            static (p, house) => p += house.Street,
+            static (p, apartment) => p += apartment.Street
+        );
 
         Assert.That(street, Is.EqualTo($"{prefix}{houseAddress.Street}"));
 
