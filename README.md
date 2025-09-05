@@ -9,6 +9,7 @@
 - Safe type access with `.IsXXX(out T)` syntax
 - Supports both reference and value types
 - Zero runtime overhead — everything is compile-time generated
+- Generation on flight or pregeneration to exclude source generator dependency
 
 Inspired by Rust’s `enum`, this library brings similar expressive power to C#.
 
@@ -57,9 +58,19 @@ string label = address.Match(
 );
 ```
 
-## Requirements
+## Usage Strategies
 
-- Roslyn Source Generators enabled
+### Import To Project
+
+Ensure you have Roslyn Source Generator available in your root project and import both REnum.dll and REnumGenerator.dll
+
+### Pregenerate
+
+import REnum.dll to your project, to generate files use REnumCLI
+
+```sh
+dotnet run -- <inputDir> <outputDir>
+```
 
 ## Tests
 
