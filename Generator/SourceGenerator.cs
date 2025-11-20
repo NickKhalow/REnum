@@ -301,6 +301,12 @@ namespace REnumSourceGenerator
 
             logger?.Log("Generated constructor");
 
+            // GetKind method
+            sb.AppendLine();
+            sb.AppendLine($"        public {kindEnum} GetKind() => _kind;");
+
+            // Factory methods
+            sb.AppendLine();
             foreach (var variant in variants)
             {
                 var typeName = variant.ToDisplayString();
@@ -322,7 +328,8 @@ namespace REnumSourceGenerator
 
             logger?.Log("Generated factory methods");
 
-            // matchers
+            // Is{X} matchers
+            sb.AppendLine();
             foreach (var variant in variants)
             {
                 var typeName = variant.ToDisplayString();
@@ -343,7 +350,8 @@ namespace REnumSourceGenerator
 
             logger?.Log("Generated matchers");
 
-            // Match method
+            // Match method with context and return value
+            sb.AppendLine();
             sb.AppendLine("        public T Match<TCtx, T>(");
             sb.AppendLine($"            TCtx ctx,");
             for (int i = 0; i < variants.Count; i++)
@@ -388,7 +396,8 @@ namespace REnumSourceGenerator
 
             logger?.Log("Generated Match with context");
 
-            // Match method without TCtx
+            // Match method without context, with return value
+            sb.AppendLine();
             sb.AppendLine("        public T Match<T>(");
             for (int i = 0; i < variants.Count; i++)
             {
@@ -432,6 +441,8 @@ namespace REnumSourceGenerator
 
             logger?.Log("Generated Match without context");
 
+            // Match method with context, void return
+            sb.AppendLine();
             sb.AppendLine("        public void Match<TCtx>(");
             sb.AppendLine($"            TCtx ctx,");
             for (int i = 0; i < variants.Count; i++)
@@ -476,7 +487,8 @@ namespace REnumSourceGenerator
 
             logger?.Log("Generated void Match with context");
 
-            // Match void without context
+            // Match method without context, void return
+            sb.AppendLine();
             sb.AppendLine("        public void Match(");
             for (int i = 0; i < variants.Count; i++)
             {
@@ -521,6 +533,7 @@ namespace REnumSourceGenerator
             logger?.Log("Generated void Match without context");
 
             // ToString
+            sb.AppendLine();
             sb.AppendLine("        public override string ToString() => _kind switch");
             sb.AppendLine("        {");
             foreach (var variant in variants)
@@ -542,6 +555,7 @@ namespace REnumSourceGenerator
             logger?.Log("Generated ToString");
 
             // Equals (typed)
+            sb.AppendLine();
             sb.AppendLine($"        public bool Equals({unionName} other)");
             sb.AppendLine("        {");
             sb.AppendLine("            if (_kind != other._kind) return false;");
@@ -568,11 +582,13 @@ namespace REnumSourceGenerator
             logger?.Log("Generated typed Equals");
 
             // Equals (object override)
+            sb.AppendLine();
             sb.AppendLine("        public override bool Equals(object? obj) => obj is "
                           + unionName
                           + " other && Equals(other);");
 
             // GetHashCode
+            sb.AppendLine();
             sb.AppendLine("        public override int GetHashCode()");
             sb.AppendLine("        {");
             sb.AppendLine("            return _kind switch");
@@ -598,6 +614,7 @@ namespace REnumSourceGenerator
             logger?.Log("Generated GetHashCode");
 
             // Equality operators
+            sb.AppendLine();
             sb.AppendLine(
                 $"        public static bool operator ==({unionName} left, {unionName} right) => left.Equals(right);");
             sb.AppendLine(
