@@ -236,7 +236,7 @@ namespace REnumSourceGenerator
 
             sb.AppendLine($"namespace {ns}");
             sb.AppendLine("{");
-            sb.AppendLine($"    public partial struct {unionName}");
+            sb.AppendLine($"    public partial struct {unionName} : System.IEquatable<{unionName}>");
             sb.AppendLine("    {");
 
             // enum
