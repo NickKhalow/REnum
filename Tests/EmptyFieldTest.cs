@@ -1,6 +1,6 @@
 namespace REnum.Tests;
 
-[REnum]
+[REnum(EnumUnderlyingType.Byte)]
 [REnumField(typeof(User))]
 [REnumFieldEmpty("NameTaken")]
 [REnumFieldEmpty("InvalidName")]

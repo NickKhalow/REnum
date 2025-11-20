@@ -106,6 +106,24 @@ namespace REnumSourceGenerator
 
             logger?.Log("Found valid REnum struct");
 
+            // Get the enum underlying type from the attribute (defaults to int)
+            string enumBaseType = "int";
+            if (reEnumAttr.ConstructorArguments.Length > 0 && reEnumAttr.ConstructorArguments[0].Value is int enumTypeValue)
+            {
+                enumBaseType = enumTypeValue switch
+                {
+                    0 => "int",      // EnumUnderlyingType.Int
+                    1 => "byte",     // EnumUnderlyingType.Byte
+                    2 => "sbyte",    // EnumUnderlyingType.SByte
+                    3 => "short",    // EnumUnderlyingType.Short
+                    4 => "ushort",   // EnumUnderlyingType.UShort
+                    5 => "uint",     // EnumUnderlyingType.UInt
+                    6 => "long",     // EnumUnderlyingType.Long
+                    7 => "ulong",    // EnumUnderlyingType.ULong
+                    _ => "int"
+                };
+            }
+
 
             AttributeData? reEnumPregeneratedAttr = structSymbol.GetAttributes()
                 .FirstOrDefault(attr =>
@@ -152,7 +170,14 @@ namespace REnumSourceGenerator
                     object? value = attr.ConstructorArguments.FirstOrDefault().Value;
                     if (value is INamedTypeSymbol namedTypeSymbol)
                     {
-                        return new FieldInfo(namedTypeSymbol.Name, namedTypeSymbol.ToDisplayString());
+                        // Check if there's a custom name provided (second argument)
+                        string enumMemberName = namedTypeSymbol.Name;
+                        if (attr.ConstructorArguments.Length > 1 && attr.ConstructorArguments[1].Value is string customName && !string.IsNullOrEmpty(customName))
+                        {
+                            enumMemberName = customName;
+                        }
+
+                        return new FieldInfo(enumMemberName, namedTypeSymbol.ToDisplayString());
                     }
 
                     return null;
@@ -209,18 +234,21 @@ namespace REnumSourceGenerator
                 sb.AppendLine(u);
             }
 
-            sb.AppendLine($"namespace {ns} {{");
-            sb.AppendLine($"public partial struct {unionName} {{");
+            sb.AppendLine($"namespace {ns}");
+            sb.AppendLine("{");
+            sb.AppendLine($"    public partial struct {unionName}");
+            sb.AppendLine("    {");
 
             // enum
-            sb.AppendLine($"    public enum {kindEnum} {{");
+            sb.AppendLine($"        public enum {kindEnum} : {enumBaseType}");
+            sb.AppendLine("        {");
             foreach (var variant in variants)
-                sb.AppendLine($"        {variant.Name},");
+                sb.AppendLine($"            {variant.Name},");
             foreach (var emptyField in emptyFields)
-                sb.AppendLine($"        {emptyField},");
-            sb.AppendLine("    }");
+                sb.AppendLine($"            {emptyField},");
+            sb.AppendLine("        }");
 
-            sb.AppendLine($"    private readonly {kindEnum} _kind;");
+            sb.AppendLine($"        private readonly {kindEnum} _kind;");
 
             var fields = new Dictionary<FieldInfo, string>();
 
@@ -228,15 +256,23 @@ namespace REnumSourceGenerator
             {
                 string name = $"_{variant.Name.ToLower()}";
                 fields[variant] = name;
-                sb.AppendLine($"    private readonly {variant.ToDisplayString()} {name};");
+                sb.AppendLine($"        private readonly {variant.ToDisplayString()} {name};");
             }
 
             logger?.Log("Generated enum and fields");
 
             // constructors
-            sb.AppendLine($"private {unionName}(");
-            sb.AppendLine($"{kindEnum} kind");
-            sb.AppendLine(variants.Count > 0 ? "," : "");
+            sb.AppendLine($"        private {unionName}(");
+            string kindParam = $"            {kindEnum} kind";
+            if (variants.Count > 0)
+            {
+                sb.AppendLine($"{kindParam},");
+            }
+            else
+            {
+                sb.AppendLine(kindParam);
+            }
+
             for (int i = 0; i < variants.Count; i++)
             {
                 var variant = variants[i];
@@ -245,11 +281,12 @@ namespace REnumSourceGenerator
                 var fieldLower = fieldName.ToLower();
 
                 string comma = i < variants.Count - 1 ? "," : "";
-                sb.AppendLine($"{typeName} {fieldLower} = default{comma}");
+                sb.AppendLine($"            {typeName} {fieldLower} = default{comma}");
             }
 
-            sb.AppendLine("){");
-            sb.AppendLine("_kind = kind;");
+            sb.AppendLine("        )");
+            sb.AppendLine("        {");
+            sb.AppendLine("            _kind = kind;");
             for (int i = 0; i < variants.Count; i++)
             {
                 var variant = variants[i];
@@ -257,10 +294,10 @@ namespace REnumSourceGenerator
                 var argLower = argName.ToLower();
                 var fieldName = fields[variant];
 
-                sb.AppendLine($"{fieldName} = {argLower};");
+                sb.AppendLine($"            {fieldName} = {argLower};");
             }
 
-            sb.AppendLine("}");
+            sb.AppendLine("        }");
 
             logger?.Log("Generated constructor");
 
@@ -273,14 +310,14 @@ namespace REnumSourceGenerator
                 string kind = $"{kindEnum}.{fieldName}";
 
                 sb.AppendLine(
-                    $"    public static {unionName} From{fieldName}({typeName} value) => new {unionName}({kind}, {fieldLower}: value);"
+                    $"        public static {unionName} From{fieldName}({typeName} value) => new {unionName}({kind}, {fieldLower}: value);"
                 );
             }
 
             foreach (var emptyField in emptyFields)
             {
                 string kind = $"{kindEnum}.{emptyField}";
-                sb.AppendLine($"    public static {unionName} {emptyField}() => new {unionName}({kind});");
+                sb.AppendLine($"        public static {unionName} {emptyField}() => new {unionName}({kind});");
             }
 
             logger?.Log("Generated factory methods");
@@ -292,29 +329,30 @@ namespace REnumSourceGenerator
                 var fieldName = variant.Name;
                 var fieldLower = fieldName.ToLower();
 
-                sb.AppendLine($"    public bool Is{fieldName}(out {typeName}? value) {{");
-                sb.AppendLine($"        value = _{fieldLower};");
-                sb.AppendLine($"        return _kind == {kindEnum}.{fieldName};");
-                sb.AppendLine("    }");
+                sb.AppendLine($"        public bool Is{fieldName}(out {typeName}? value)");
+                sb.AppendLine("        {");
+                sb.AppendLine($"            value = _{fieldLower};");
+                sb.AppendLine($"            return _kind == {kindEnum}.{fieldName};");
+                sb.AppendLine("        }");
             }
 
             foreach (var emptyField in emptyFields)
             {
-                sb.AppendLine($"    public bool Is{emptyField}() => _kind == {kindEnum}.{emptyField};");
+                sb.AppendLine($"        public bool Is{emptyField}() => _kind == {kindEnum}.{emptyField};");
             }
 
             logger?.Log("Generated matchers");
 
             // Match method
-            sb.AppendLine("    public T Match<TCtx, T>(");
-            sb.AppendLine($"        TCtx ctx,");
+            sb.AppendLine("        public T Match<TCtx, T>(");
+            sb.AppendLine($"            TCtx ctx,");
             for (int i = 0; i < variants.Count; i++)
             {
                 var variant = variants[i];
                 var typeName = variant.ToDisplayString();
                 var fieldName = variant.Name;
                 var comma = i < variants.Count - 1 || emptyFields.Count > 0 ? "," : "";
-                sb.AppendLine($"        System.Func<TCtx, {typeName}, T> on{fieldName}{comma}");
+                sb.AppendLine($"            System.Func<TCtx, {typeName}, T> on{fieldName}{comma}");
             }
 
             for (int i = 0; i < emptyFields.Count; i++)
@@ -322,43 +360,43 @@ namespace REnumSourceGenerator
                 var emptyField = emptyFields[i];
                 var fieldName = emptyField;
                 var comma = i < emptyFields.Count - 1 ? "," : "";
-                sb.AppendLine($"        System.Func<TCtx, T> on{fieldName}{comma}");
+                sb.AppendLine($"            System.Func<TCtx, T> on{fieldName}{comma}");
             }
 
-            sb.AppendLine("    )");
-            sb.AppendLine("    {");
-            sb.AppendLine("        return _kind switch");
+            sb.AppendLine("        )");
             sb.AppendLine("        {");
+            sb.AppendLine("            return _kind switch");
+            sb.AppendLine("            {");
             foreach (var variant in variants)
             {
                 var fieldName = variant.Name;
                 var fieldLower = fieldName.ToLower();
                 sb.AppendLine(
-                    $"            {kindEnum}.{fieldName} => on{fieldName}(ctx, _{fieldLower}),"
+                    $"                {kindEnum}.{fieldName} => on{fieldName}(ctx, _{fieldLower}),"
                 );
             }
 
             foreach (var emptyField in emptyFields)
             {
                 var fieldName = emptyField;
-                sb.AppendLine($"            {kindEnum}.{fieldName} => on{fieldName}(ctx),");
+                sb.AppendLine($"                {kindEnum}.{fieldName} => on{fieldName}(ctx),");
             }
 
-            sb.AppendLine("            _ => throw new System.InvalidOperationException()");
-            sb.AppendLine("        };");
-            sb.AppendLine("    }");
+            sb.AppendLine("                _ => throw new System.InvalidOperationException()");
+            sb.AppendLine("            };");
+            sb.AppendLine("        }");
 
             logger?.Log("Generated Match with context");
 
             // Match method without TCtx
-            sb.AppendLine("    public T Match<T>(");
+            sb.AppendLine("        public T Match<T>(");
             for (int i = 0; i < variants.Count; i++)
             {
                 var variant = variants[i];
                 var typeName = variant.ToDisplayString();
                 var fieldName = variant.Name;
                 var comma = i < variants.Count - 1 || emptyFields.Count > 0 ? "," : "";
-                sb.AppendLine($"        System.Func<{typeName}, T> on{fieldName}{comma}");
+                sb.AppendLine($"            System.Func<{typeName}, T> on{fieldName}{comma}");
             }
 
             for (int i = 0; i < emptyFields.Count; i++)
@@ -366,43 +404,43 @@ namespace REnumSourceGenerator
                 var emptyField = emptyFields[i];
                 var fieldName = emptyField;
                 var comma = i < emptyFields.Count - 1 ? "," : "";
-                sb.AppendLine($"        System.Func<T> on{fieldName}{comma}");
+                sb.AppendLine($"            System.Func<T> on{fieldName}{comma}");
             }
 
-            sb.AppendLine("    )");
-            sb.AppendLine("    {");
-            sb.AppendLine("        return _kind switch");
+            sb.AppendLine("        )");
             sb.AppendLine("        {");
+            sb.AppendLine("            return _kind switch");
+            sb.AppendLine("            {");
             foreach (var variant in variants)
             {
                 var fieldName = variant.Name;
                 var fieldLower = fieldName.ToLower();
                 sb.AppendLine(
-                    $"            {kindEnum}.{fieldName} => on{fieldName}(_{fieldLower}),"
+                    $"                {kindEnum}.{fieldName} => on{fieldName}(_{fieldLower}),"
                 );
             }
 
             foreach (var emptyField in emptyFields)
             {
                 var fieldName = emptyField;
-                sb.AppendLine($"            {kindEnum}.{fieldName} => on{fieldName}(),");
+                sb.AppendLine($"                {kindEnum}.{fieldName} => on{fieldName}(),");
             }
 
-            sb.AppendLine("            _ => throw new System.InvalidOperationException()");
-            sb.AppendLine("        };");
-            sb.AppendLine("    }");
+            sb.AppendLine("                _ => throw new System.InvalidOperationException()");
+            sb.AppendLine("            };");
+            sb.AppendLine("        }");
 
             logger?.Log("Generated Match without context");
 
-            sb.AppendLine("    public void Match<TCtx>(");
-            sb.AppendLine($"        TCtx ctx,");
+            sb.AppendLine("        public void Match<TCtx>(");
+            sb.AppendLine($"            TCtx ctx,");
             for (int i = 0; i < variants.Count; i++)
             {
                 var variant = variants[i];
                 var typeName = variant.ToDisplayString();
                 var fieldName = variant.Name;
                 var comma = i < variants.Count - 1 || emptyFields.Count > 0 ? "," : "";
-                sb.AppendLine($"        System.Action<TCtx, {typeName}> on{fieldName}{comma}");
+                sb.AppendLine($"            System.Action<TCtx, {typeName}> on{fieldName}{comma}");
             }
 
             for (int i = 0; i < emptyFields.Count; i++)
@@ -410,43 +448,43 @@ namespace REnumSourceGenerator
                 var emptyField = emptyFields[i];
                 var fieldName = emptyField;
                 var comma = i < emptyFields.Count - 1 ? "," : "";
-                sb.AppendLine($"        System.Action<TCtx> on{fieldName}{comma}");
+                sb.AppendLine($"            System.Action<TCtx> on{fieldName}{comma}");
             }
 
-            sb.AppendLine("    )");
-            sb.AppendLine("    {");
-            sb.AppendLine("        switch (_kind)");
+            sb.AppendLine("        )");
             sb.AppendLine("        {");
+            sb.AppendLine("            switch (_kind)");
+            sb.AppendLine("            {");
             foreach (var variant in variants)
             {
                 var fieldName = variant.Name;
                 var fieldLower = fieldName.ToLower();
                 sb.AppendLine(
-                    $"            case {kindEnum}.{fieldName}: on{fieldName}(ctx, _{fieldLower}); break;"
+                    $"                case {kindEnum}.{fieldName}: on{fieldName}(ctx, _{fieldLower}); break;"
                 );
             }
 
             foreach (var emptyField in emptyFields)
             {
                 var fieldName = emptyField;
-                sb.AppendLine($"            case {kindEnum}.{fieldName}: on{fieldName}(ctx); break;");
+                sb.AppendLine($"                case {kindEnum}.{fieldName}: on{fieldName}(ctx); break;");
             }
 
-            sb.AppendLine("            default: throw new System.InvalidOperationException();");
+            sb.AppendLine("                default: throw new System.InvalidOperationException();");
+            sb.AppendLine("            }");
             sb.AppendLine("        }");
-            sb.AppendLine("    }");
 
             logger?.Log("Generated void Match with context");
 
             // Match void without context
-            sb.AppendLine("    public void Match(");
+            sb.AppendLine("        public void Match(");
             for (int i = 0; i < variants.Count; i++)
             {
                 var variant = variants[i];
                 var typeName = variant.ToDisplayString();
                 var fieldName = variant.Name;
                 var comma = i < variants.Count - 1 || emptyFields.Count > 0 ? "," : "";
-                sb.AppendLine($"        System.Action<{typeName}> on{fieldName}{comma}");
+                sb.AppendLine($"            System.Action<{typeName}> on{fieldName}{comma}");
             }
 
             for (int i = 0; i < emptyFields.Count; i++)
@@ -454,118 +492,118 @@ namespace REnumSourceGenerator
                 var emptyField = emptyFields[i];
                 var fieldName = emptyField;
                 var comma = i < emptyFields.Count - 1 ? "," : "";
-                sb.AppendLine($"        System.Action on{fieldName}{comma}");
+                sb.AppendLine($"            System.Action on{fieldName}{comma}");
             }
 
-            sb.AppendLine("    )");
-            sb.AppendLine("    {");
-            sb.AppendLine("        switch (_kind)");
+            sb.AppendLine("        )");
             sb.AppendLine("        {");
+            sb.AppendLine("            switch (_kind)");
+            sb.AppendLine("            {");
             foreach (var variant in variants)
             {
                 var fieldName = variant.Name;
                 var fieldLower = fieldName.ToLower();
                 sb.AppendLine(
-                    $"            case {kindEnum}.{fieldName}: on{fieldName}(_{fieldLower}); break;"
+                    $"                case {kindEnum}.{fieldName}: on{fieldName}(_{fieldLower}); break;"
                 );
             }
 
             foreach (var emptyField in emptyFields)
             {
                 var fieldName = emptyField;
-                sb.AppendLine($"            case {kindEnum}.{fieldName}: on{fieldName}(); break;");
+                sb.AppendLine($"                case {kindEnum}.{fieldName}: on{fieldName}(); break;");
             }
 
-            sb.AppendLine("            default: throw new System.InvalidOperationException();");
+            sb.AppendLine("                default: throw new System.InvalidOperationException();");
+            sb.AppendLine("            }");
             sb.AppendLine("        }");
-            sb.AppendLine("    }");
 
             logger?.Log("Generated void Match without context");
 
             // ToString
-            sb.AppendLine("    public override string ToString() => _kind switch");
-            sb.AppendLine("    {");
+            sb.AppendLine("        public override string ToString() => _kind switch");
+            sb.AppendLine("        {");
             foreach (var variant in variants)
             {
                 var fieldName = variant.Name;
                 var fieldLower = fieldName.ToLower();
-                sb.AppendLine($"        {kindEnum}.{fieldName} => _{fieldLower}.ToString() ?? \"null\",");
+                sb.AppendLine($"            {kindEnum}.{fieldName} => _{fieldLower}.ToString() ?? \"null\",");
             }
 
             foreach (var emptyField in emptyFields)
             {
                 var fieldName = emptyField;
-                sb.AppendLine($"        {kindEnum}.{fieldName} => \"{fieldName}\",");
+                sb.AppendLine($"            {kindEnum}.{fieldName} => \"{fieldName}\",");
             }
 
-            sb.AppendLine("        _ => \"<invalid>\"");
-            sb.AppendLine("    };");
+            sb.AppendLine("            _ => \"<invalid>\"");
+            sb.AppendLine("        };");
 
             logger?.Log("Generated ToString");
 
             // Equals (typed)
-            sb.AppendLine($"    public bool Equals({unionName} other)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        if (_kind != other._kind) return false;");
+            sb.AppendLine($"        public bool Equals({unionName} other)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            if (_kind != other._kind) return false;");
             foreach (var variant in variants)
             {
                 var fieldName = variant.Name;
                 var fieldLower = fieldName.ToLower();
-                sb.AppendLine($"        if (_kind == {kindEnum}.{fieldName})");
+                sb.AppendLine($"            if (_kind == {kindEnum}.{fieldName})");
                 sb.AppendLine(
-                    $"            return System.Collections.Generic.EqualityComparer<{variant.ToDisplayString()}>.Default.Equals(_{fieldLower}, other._{fieldLower});"
+                    $"                return System.Collections.Generic.EqualityComparer<{variant.ToDisplayString()}>.Default.Equals(_{fieldLower}, other._{fieldLower});"
                 );
             }
 
             foreach (var emptyField in emptyFields)
             {
                 var fieldName = emptyField;
-                sb.AppendLine($"        if (_kind == {kindEnum}.{fieldName})");
-                sb.AppendLine("            return true;");
+                sb.AppendLine($"            if (_kind == {kindEnum}.{fieldName})");
+                sb.AppendLine("                return true;");
             }
 
-            sb.AppendLine("        return false;");
-            sb.AppendLine("    }");
+            sb.AppendLine("            return false;");
+            sb.AppendLine("        }");
 
             logger?.Log("Generated typed Equals");
 
             // Equals (object override)
-            sb.AppendLine("    public override bool Equals(object? obj) => obj is "
+            sb.AppendLine("        public override bool Equals(object? obj) => obj is "
                           + unionName
                           + " other && Equals(other);");
 
             // GetHashCode
-            sb.AppendLine("    public override int GetHashCode()");
-            sb.AppendLine("    {");
-            sb.AppendLine("        return _kind switch");
+            sb.AppendLine("        public override int GetHashCode()");
             sb.AppendLine("        {");
+            sb.AppendLine("            return _kind switch");
+            sb.AppendLine("            {");
             foreach (var variant in variants)
             {
                 var fieldName = variant.Name;
                 var fieldLower = fieldName.ToLower();
                 sb.AppendLine(
-                    $"            {kindEnum}.{fieldName} => System.HashCode.Combine((int)_kind, _{fieldLower}),");
+                    $"                {kindEnum}.{fieldName} => System.HashCode.Combine((int)_kind, _{fieldLower}),");
             }
 
             foreach (var emptyField in emptyFields)
             {
                 var fieldName = emptyField;
-                sb.AppendLine($"            {kindEnum}.{fieldName} => (int)_kind,");
+                sb.AppendLine($"                {kindEnum}.{fieldName} => (int)_kind,");
             }
 
-            sb.AppendLine("            _ => 0");
-            sb.AppendLine("        };");
-            sb.AppendLine("    }");
+            sb.AppendLine("                _ => 0");
+            sb.AppendLine("            };");
+            sb.AppendLine("        }");
 
             logger?.Log("Generated GetHashCode");
 
             // Equality operators
             sb.AppendLine(
-                $"    public static bool operator ==({unionName} left, {unionName} right) => left.Equals(right);");
+                $"        public static bool operator ==({unionName} left, {unionName} right) => left.Equals(right);");
             sb.AppendLine(
-                $"    public static bool operator !=({unionName} left, {unionName} right) => !(left == right);");
+                $"        public static bool operator !=({unionName} left, {unionName} right) => !(left == right);");
 
-            sb.AppendLine("}"); // struct
+            sb.AppendLine("    }"); // struct
             sb.AppendLine("}"); // namespace
 
             logger?.Log("Generated equality operators");
