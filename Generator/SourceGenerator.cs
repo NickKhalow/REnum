@@ -19,6 +19,15 @@ namespace REnumSourceGenerator
         private readonly ILogger? logger;
         private readonly Mode mode;
 
+        private static readonly DiagnosticDescriptor InvalidEnumUnderlyingTypeWarning = new DiagnosticDescriptor(
+            id: "RENUM001",
+            title: "Invalid enum underlying type",
+            messageFormat: "Invalid enum underlying type value '{0}' specified. Defaulting to 'int'. Valid values are 0-7 (Int, Byte, SByte, Short, UShort, UInt, Long, ULong).",
+            category: "REnum",
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true
+        );
+
         public REnumSourceGenerator() : this(
             Environment.GetEnvironmentVariable("RENUM_CODE_GENERATION_FILE_LOGGING") != null
                 ? new FileLogger()
@@ -120,8 +129,19 @@ namespace REnumSourceGenerator
                     5 => "uint",     // EnumUnderlyingType.UInt
                     6 => "long",     // EnumUnderlyingType.Long
                     7 => "ulong",    // EnumUnderlyingType.ULong
-                    _ => "int"
+                    _ => HandleInvalidEnumType(context, candidate, enumTypeValue)
                 };
+            }
+
+            static string HandleInvalidEnumType(GeneratorExecutionContext context, StructDeclarationSyntax candidate, int value)
+            {
+                var diagnostic = Diagnostic.Create(
+                    InvalidEnumUnderlyingTypeWarning,
+                    candidate.Identifier.GetLocation(),
+                    value
+                );
+                context.ReportDiagnostic(diagnostic);
+                return "int";
             }
 
 
