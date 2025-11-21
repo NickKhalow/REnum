@@ -164,20 +164,59 @@ namespace REnumSourceGenerator
                         raw = raw.Slice(0, end);
                         string output = raw.ToString()!;
 
-                        return new FieldInfo(output, output);
+                        // For the empty case, we can't determine type info, assume reference type
+                        return new FieldInfo(output, output, isValueType: false, isNullable: false);
                     }
 
                     object? value = attr.ConstructorArguments.FirstOrDefault().Value;
-                    if (value is INamedTypeSymbol namedTypeSymbol)
+                    if (value is ITypeSymbol typeSymbol)
                     {
-                        // Check if there's a custom name provided (second argument)
-                        string enumMemberName = namedTypeSymbol.Name;
+                        INamedTypeSymbol? namedTypeSymbol = typeSymbol as INamedTypeSymbol;
+
+                        // Determine if it's a value type and if it's nullable
+                        bool isValueType = typeSymbol.IsValueType;
+                        bool isNullable = false;
+                        string enumMemberName = typeSymbol.Name;
+                        string typeDisplayString = typeSymbol.ToDisplayString();
+
+                        // Check if it's Nullable<T> (nullable value type)
+                        if (namedTypeSymbol?.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+                        {
+                            isNullable = true;
+                            // For Nullable<T>, use the underlying type name instead of "Nullable"
+                            if (namedTypeSymbol.TypeArguments.Length > 0)
+                            {
+                                enumMemberName = namedTypeSymbol.TypeArguments[0].Name;
+                            }
+                        }
+                        // Check if it's a nullable reference type using NullableAnnotation
+                        else if (!isValueType && typeSymbol.NullableAnnotation == NullableAnnotation.Annotated)
+                        {
+                            isNullable = true;
+                            // Ensure the display string includes the ?
+                            if (!typeDisplayString.EndsWith("?"))
+                            {
+                                typeDisplayString += "?";
+                            }
+                        }
+                        // Check the explicit nullable parameter (third argument)
+                        else if (!isValueType && attr.ConstructorArguments.Length > 2 && attr.ConstructorArguments[2].Value is bool nullableParam && nullableParam)
+                        {
+                            isNullable = true;
+                            // Add ? to the type display string for reference types
+                            if (!typeDisplayString.EndsWith("?"))
+                            {
+                                typeDisplayString += "?";
+                            }
+                        }
+
+                        // Check if there's a custom name provided (second argument) - overrides everything
                         if (attr.ConstructorArguments.Length > 1 && attr.ConstructorArguments[1].Value is string customName && !string.IsNullOrEmpty(customName))
                         {
                             enumMemberName = customName;
                         }
 
-                        return new FieldInfo(enumMemberName, namedTypeSymbol.ToDisplayString());
+                        return new FieldInfo(enumMemberName, typeDisplayString, isValueType, isNullable);
                     }
 
                     return null;
@@ -278,7 +317,7 @@ namespace REnumSourceGenerator
                 var variant = variants[i];
                 var typeName = variant.ToDisplayString();
                 var fieldName = variant.Name;
-                var fieldLower = fieldName.ToLower();
+                var fieldLower = EscapeKeyword(fieldName.ToLower());
 
                 string comma = i < variants.Count - 1 ? "," : "";
                 sb.AppendLine($"            {typeName} {fieldLower} = default{comma}");
@@ -291,7 +330,7 @@ namespace REnumSourceGenerator
             {
                 var variant = variants[i];
                 var argName = variant.Name;
-                var argLower = argName.ToLower();
+                var argLower = EscapeKeyword(argName.ToLower());
                 var fieldName = fields[variant];
 
                 sb.AppendLine($"            {fieldName} = {argLower};");
@@ -311,7 +350,7 @@ namespace REnumSourceGenerator
             {
                 var typeName = variant.ToDisplayString();
                 var fieldName = variant.Name;
-                var fieldLower = fieldName.ToLower();
+                var fieldLower = EscapeKeyword(fieldName.ToLower());
 
                 string kind = $"{kindEnum}.{fieldName}";
 
@@ -336,7 +375,11 @@ namespace REnumSourceGenerator
                 var fieldName = variant.Name;
                 var fieldLower = fieldName.ToLower();
 
-                sb.AppendLine($"        public bool Is{fieldName}(out {typeName}? value)");
+                // Only use MaybeNullWhen attribute for non-nullable types
+                // For nullable types (int?, string?, etc.), the type itself is already nullable
+                string maybeNullAttribute = variant.IsNullable ? "" : "[System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] ";
+
+                sb.AppendLine($"        public bool Is{fieldName}({maybeNullAttribute}out {typeName} value)");
                 sb.AppendLine("        {");
                 sb.AppendLine($"            value = _{fieldLower};");
                 sb.AppendLine($"            return _kind == {kindEnum}.{fieldName};");
@@ -540,7 +583,27 @@ namespace REnumSourceGenerator
             {
                 var fieldName = variant.Name;
                 var fieldLower = fieldName.ToLower();
-                sb.AppendLine($"            {kindEnum}.{fieldName} => _{fieldLower}.ToString() ?? \"null\",");
+
+                // For nullable value types, check HasValue before calling ToString
+                if (variant.IsNullable && variant.IsValueType)
+                {
+                    sb.AppendLine($"            {kindEnum}.{fieldName} => _{fieldLower}.HasValue ? _{fieldLower}.Value.ToString() : \"null\",");
+                }
+                // For nullable reference types, use ?. operator
+                else if (variant.IsNullable && !variant.IsValueType)
+                {
+                    sb.AppendLine($"            {kindEnum}.{fieldName} => _{fieldLower}?.ToString() ?? \"null\",");
+                }
+                // For non-nullable value types, just call ToString() directly
+                else if (variant.IsValueType)
+                {
+                    sb.AppendLine($"            {kindEnum}.{fieldName} => _{fieldLower}.ToString(),");
+                }
+                // For non-nullable reference types, use ?. operator for safety
+                else
+                {
+                    sb.AppendLine($"            {kindEnum}.{fieldName} => _{fieldLower}?.ToString() ?? \"null\",");
+                }
             }
 
             foreach (var emptyField in emptyFields)
@@ -676,11 +739,15 @@ namespace REnumSourceGenerator
         {
             private readonly string typeName;
             public string Name { get; }
+            public bool IsValueType { get; }
+            public bool IsNullable { get; }
 
-            public FieldInfo(string name, string typeName)
+            public FieldInfo(string name, string typeName, bool isValueType, bool isNullable)
             {
                 this.typeName = typeName;
                 Name = name;
+                IsValueType = isValueType;
+                IsNullable = isNullable;
             }
 
             public string ToDisplayString()
@@ -693,6 +760,21 @@ namespace REnumSourceGenerator
         {
             OnFlight,
             Pregenerate
+        }
+
+        private static string EscapeKeyword(string identifier)
+        {
+            // Use Roslyn's built-in keyword detection
+            var kind = SyntaxFacts.GetKeywordKind(identifier);
+            var contextualKind = SyntaxFacts.GetContextualKeywordKind(identifier);
+
+            // If it's a keyword or contextual keyword, escape it
+            if (kind != SyntaxKind.None || contextualKind != SyntaxKind.None)
+            {
+                return $"@{identifier}";
+            }
+
+            return identifier;
         }
     }
 }

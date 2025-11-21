@@ -68,22 +68,19 @@ public class CustomNameTest
         var payment = Payment.FromCard(card);
 
         Assert.That(payment.IsCard(out var receivedCard), Is.True);
-        Assert.That(receivedCard.HasValue, Is.True);
-        Assert.That(receivedCard.Value, Is.EqualTo(card));
+        Assert.That(receivedCard, Is.EqualTo(card));
 
         var cash = new PaymentCash(100.50m);
         var cashPayment = Payment.FromPaymentCash(cash);
 
         Assert.That(cashPayment.IsPaymentCash(out var receivedCash), Is.True);
-        Assert.That(receivedCash.HasValue, Is.True);
-        Assert.That(receivedCash.Value.Amount, Is.EqualTo(100.50m));
+        Assert.That(receivedCash.Amount, Is.EqualTo(100.50m));
 
         var crypto = new PaymentCrypto("0x1234...", "Bitcoin");
         var cryptoPayment = Payment.FromCrypto(crypto);
 
         Assert.That(cryptoPayment.IsCrypto(out var receivedCrypto), Is.True);
-        Assert.That(receivedCrypto.HasValue, Is.True);
-        Assert.That(receivedCrypto.Value.CryptoType, Is.EqualTo("Bitcoin"));
+        Assert.That(receivedCrypto.CryptoType, Is.EqualTo("Bitcoin"));
     }
 
     [Test]
