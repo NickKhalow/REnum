@@ -1,0 +1,57 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+      fail-fast: false
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: |
+          8.0.x
+          9.0.x
+
+    - name: Restore dependencies
+      run: dotnet restore REnum.sln
+
+    - name: Build
+      run: dotnet build REnum.sln --configuration Release --no-restore
+
+    - name: Run Tests
+      run: dotnet test REnum.sln --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
+
+    - name: Publish Test Results
+      uses: EnricoMi/publish-unit-test-result-action@v2
+      if: always() && runner.os == 'Linux'
+      with:
+        files: |
+          **/test-results.trx
+
+    - name: Publish Test Results (Windows/macOS)
+      uses: dorny/test-reporter@v1
+      if: always() && runner.os != 'Linux'
+      with:
+        name: Test Results (${{ matrix.os }})
+        path: '**/test-results.trx'
+        reporter: dotnet-trx
+        fail-on-error: true

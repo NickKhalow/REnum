@@ -1,0 +1,28 @@
+{
+  "name": "com.decentraland.renum",
+  "version": "1.2.0",
+  "displayName": "REnum",
+  "description": "Zero-cost enums for C# in Rust-style. Tagged union (sum type) support via simple attributes with pattern matching and safe type access. Everything is compile-time generated with zero runtime overhead.",
+  "unity": "2020.3",
+  "keywords": [
+    "enum",
+    "union",
+    "pattern-matching",
+    "rust-style",
+    "tagged-union",
+    "sum-type",
+    "codegen",
+    "source-generator"
+  ],
+  "author": {
+    "name": "Nick Khalow",
+    "url": "https://github.com/NickKhalow",
+    "email": "nickhalow@gmail.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NickKhalow/REnum.git"
+  },
+  "type": "library"
+}
