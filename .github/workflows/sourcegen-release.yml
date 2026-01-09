@@ -79,10 +79,11 @@ jobs:
 
     - name: Create and push to sourcegen branch
       run: |
+        mv SourceGenArtifact /tmp/SourceGenArtifact
         git checkout --orphan sourcegen/${{ inputs.version }}
         git rm -rf .
-        mv SourceGenArtifact/* .
-        rmdir SourceGenArtifact
+        rm -rf *
+        mv /tmp/SourceGenArtifact/* .
         git add .
         git commit -m "Release source generator v${{ inputs.version }}"
         git push origin sourcegen/${{ inputs.version }}
