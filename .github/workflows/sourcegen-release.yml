@@ -1,0 +1,88 @@
+name: Source Generator Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g., 1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and Release Source Generator
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+
+    - name: Restore dependencies
+      run: dotnet restore Generator/REnumSourceGenerator.csproj
+
+    - name: Build Generator
+      run: dotnet build Generator/REnumSourceGenerator.csproj --configuration Release --no-restore
+
+    - name: Create SourceGenArtifact folder
+      run: mkdir -p SourceGenArtifact
+
+    - name: Copy DLL and meta file to artifact folder
+      run: |
+        cp Generator/bin/Release/netstandard2.0/REnumSourceGenerator.dll SourceGenArtifact/
+        cp Generator/REnumSourceGenerator.dll.meta SourceGenArtifact/
+
+    - name: Create package.json
+      run: |
+        cat > SourceGenArtifact/package.json << 'EOF'
+        {
+          "name": "com.decentraland.renum.sourcegen",
+          "version": "${{ inputs.version }}",
+          "displayName": "REnum Source Generator",
+          "description": "Source generator for REnum - Zero-cost enums for C# in Rust-style. Tagged union (sum type) support via simple attributes with pattern matching and safe type access.",
+          "unity": "2020.3",
+          "keywords": [
+            "enum",
+            "union",
+            "pattern-matching",
+            "rust-style",
+            "tagged-union",
+            "sum-type",
+            "codegen",
+            "source-generator"
+          ],
+          "author": {
+            "name": "Nick Khalow",
+            "url": "https://github.com/NickKhalow",
+            "email": "nickhalow@gmail.com"
+          },
+          "license": "MIT",
+          "repository": {
+            "type": "git",
+            "url": "https://github.com/NickKhalow/REnum.git"
+          },
+          "type": "library"
+        }
+        EOF
+
+    - name: Configure Git
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+    - name: Create and push to sourcegen branch
+      run: |
+        git checkout --orphan sourcegen/${{ inputs.version }}
+        git rm -rf .
+        mv SourceGenArtifact/* .
+        rmdir SourceGenArtifact
+        git add .
+        git commit -m "Release source generator v${{ inputs.version }}"
+        git push origin sourcegen/${{ inputs.version }}
