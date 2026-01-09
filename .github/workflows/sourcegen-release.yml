@@ -34,10 +34,11 @@ jobs:
     - name: Create SourceGenArtifact folder
       run: mkdir -p SourceGenArtifact
 
-    - name: Copy DLL and meta file to artifact folder
+    - name: Copy DLL and meta files to artifact folder
       run: |
         cp Generator/bin/Release/netstandard2.0/REnumSourceGenerator.dll SourceGenArtifact/
         cp Generator/REnumSourceGenerator.dll.meta SourceGenArtifact/
+        cp Generator/package.json.meta SourceGenArtifact/
 
     - name: Create package.json
       run: |
